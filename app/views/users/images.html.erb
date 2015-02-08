@@ -1,0 +1,15 @@
+<ul class="nav nav-tabs" role="tablist">
+  <li role="presentation">
+    <%=link_to "Network", trackers_user_path(@user)%>
+  </li>
+  <li role="presentation">
+    <%=link_to "Posts", posts_user_path(@user)%>
+  </li>
+  <li role="presentation" class="active">
+    <%=link_to "Gallery", images_user_path(@user)%>
+  </li>
+</ul>
+
+<% @images.each do |image| %>
+  <%= link_to image_tag(image.image.url, class: "img-rounded", width:"150px", height:"150px"), image %>
+<% end %>

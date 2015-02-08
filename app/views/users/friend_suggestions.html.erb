@@ -1,0 +1,26 @@
+<ul class="nav nav-tabs" role="tablist">
+  <li role="presentation">
+    <%=link_to "Trackers", trackers_user_path(@user)%>
+  </li>
+  <li role="presentation">
+    <%=link_to "Trackings", trackings_user_path(@user)%>
+  </li>
+  <li role="presentation">
+    <%=link_to "Friends", friends_user_path(@user)%>
+  </li>
+  <li role="presentation" class="active">
+    <%=link_to "Friend Suggestions", friend_suggestions_user_path(@user)%>
+  </li>
+</ul>
+<% unless @users.empty? %>
+  <% @users.each do |user| %>
+    <div class="well row">
+      <div class="col-md-1"><%=user.id%></div>
+      <div class="col-md-3"><%=link_to user.name, user%></div>
+      <div class="col-md-3"><%=user.job%></div>
+      <div class="col-md-2"><%=user.country%></div>
+    </div>
+  <% end %>
+<% else %>
+ <p>There are no suggestions for your profile, please follow more people..</p>
+<% end %>

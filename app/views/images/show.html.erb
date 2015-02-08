@@ -1,0 +1,19 @@
+<div class="item">
+  <img src=<%=@image.image.url%>>
+  <div class="carousel-caption">
+  </div>
+</div>
+<h3>Likes Count: <%=@image.likes.count%></h3>
+<h3> Comments:</h3>
+<hr>
+<table class="table table-condensed">
+  <tbody>
+  <% @image.comments.each do |comment| %>
+    <tr>
+      <td><%=link_to comment.commenter.name, comment.commenter %></td>
+      <td><%=time_ago_in_words(comment.created_at)+" ago" %></td>
+      <td><%=comment.content%></td>
+    </tr>
+  <% end %>
+  </tbody>
+</table>

@@ -1,0 +1,17 @@
+<h2><%= "#{@user.name} Posted: " %></h2>
+<%=time_ago_in_words(@post.created_at)+" ago" %>
+<p><%= @post.content %></p>
+<h3>Likes Count: <%=@post.likes.count%></h3>
+<h3> Comments:</h3>
+<hr>
+<table class="table table-condensed">
+  <tbody>
+  <% @post.comments.each do |comment| %>
+    <tr>
+      <td><%=link_to comment.commenter.name, comment.commenter %></td>
+      <td><%=time_ago_in_words(comment.created_at)+" ago" %></td>
+      <td><%=comment.content%></td>
+    </tr>
+  <% end %>
+  </tbody>
+</table>

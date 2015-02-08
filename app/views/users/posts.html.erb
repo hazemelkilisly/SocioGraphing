@@ -1,0 +1,22 @@
+<ul class="nav nav-tabs" role="tablist">
+  <li role="presentation">
+    <%=link_to "Network", trackers_user_path(@user)%>
+  </li>
+  <li role="presentation" class="active">
+    <%=link_to "Posts", posts_user_path(@user)%>
+  </li>
+  <li role="presentation">
+    <%=link_to "Gallery", images_user_path(@user)%>
+  </li>
+</ul>
+
+<% @posts.each do |post| %>
+  <% if post.is_a?(Post) %>
+    <h4><%="#{@user.name} Tweeted: "%></h4>
+    <p><%= link_to post.content[0..150]+".. Read More >", post %></p>
+    <br>
+  <% elsif post.is_a?(RePost) %>
+    <h4><%="#{@user.name} Re-Tweeted #{post.post.user.name}'s Tweet: "%></h4>
+    <%= link_to post.post.content[0..150]+".. Read More >", post.post %>
+  <% end %>
+<% end %>

@@ -1,0 +1,25 @@
+<div class="jumbotron">
+  <h1><%=@user.name%></h1>
+  <p>Profession: <%=@user.job%></p>
+  <p>Country: <%=@user.country%></p>
+  <p>Email: <%=@user.email%></p>
+  <h4>Relations Weight:</h4>
+  <%= @relations_analytics.map{|u| "#{u[1]} #{u[0]}: = #{(((u[1]*1.0)/@total_relation_count)*100).to_i}%"}.join(" | ") %>
+  <% if (@user != current_user) && ( !current_user.tracks?(@user) ) %>
+    <%= link_to "Follow", follow_user_path(@user), method: :post %>
+  <% elsif (@user != current_user) && (current_user.tracks?(@user)) %>
+    <%= link_to "Un Follow", unfollow_user_path(@user), method: :post %>
+  <% end %>
+</div>
+
+<ul class="nav nav-tabs" role="tablist">
+  <li role="presentation">
+    <%=link_to "Network", trackers_user_path(@user)%>
+  </li>
+  <li role="presentation">
+    <%=link_to "Posts", posts_user_path(@user)%>
+  </li>
+  <li role="presentation">
+    <%=link_to "Gallery", images_user_path(@user)%>
+  </li>
+</ul>
