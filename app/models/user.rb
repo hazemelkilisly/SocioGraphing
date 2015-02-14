@@ -11,6 +11,9 @@ class User < ActiveRecord::Base
   has_many :re_posts
 
   has_many :images
+  has_many :tags
+    has_many :tagged_in_images, through: :tags, source: :image, class_name: "Image"
+
   has_many :likes, foreign_key: :liker_id
     has_many :liked_posts, through: :likes, source: :likeable, source_type: "Post"
     has_many :liked_images, through: :likes, source: :likeable, source_type: "Image"

@@ -1,8 +1,16 @@
 task :populate_database => :environment do
 
+  # needed number of users
+  no_of_users = 10
+  # min..max number of posts for each user
+  random_posts_array = [*5..10]
+  # random images upload count for each user
+  random_images_array = [*0..3]
+  # random social interactions number (% from total images -divided in random-) for posts/image by tracked users
+  random_percentage = [*30..70]
+
   # Initializing DB with Data
   p "AAAAA Initializing DB with Data AAAAA"
-  no_of_users = 20
   password = "12345678"
   no_of_users.times do
     name = Faker::Name.name
@@ -56,7 +64,7 @@ task :populate_database => :environment do
 
     # fill the rest of the random max randomly
     p "fill the rest of the random max randomly"
-    user_trackings = user.trackings
+    user_trackings = user.tracking
     selected_ids = user_trackings.map{|u| u.id}+[user.id]
     user_trackings_count = user_trackings.count
     if user_trackings_count < random_max
@@ -82,9 +90,8 @@ task :populate_database => :environment do
     # user_friends_ids = user_trackers_ids&user_trackings_ids
     # user_friends_count = user_friends_ids.count
 
-  # Create Posts for users: min= 5, max = 30
-  p "CCCCC Create Posts for users: min= 5, max = 30 CCCCC"
-  random_posts_array = [*5..30]
+  # Create Posts for users: min= 5, max = 10
+  p "CCCCC Create Posts for users: min= 5, max = 10 CCCCC"
   all_users.each do |user|
     random_posts_count = random_posts_array.sample
     random_posts_count.times do
@@ -101,7 +108,6 @@ task :populate_database => :environment do
 
   # Upload images for users: min=0, max = 3, For sizes issues on download
   p "DDDDD Upload images for users: min=0, max = 3 DDDDD"
-  random_images_array = [*0..3]
   all_users.each do |user|
     random_images_count = random_images_array.sample
     random_images_count.times do
@@ -119,13 +125,12 @@ task :populate_database => :environment do
   # Like/Dislike/Repost/Comment random posts (with %: min 30%, max 70%) for user
   # Like/Dislike/Comment random images (with %: min 30%, max 70%) for user
   p "DDDDD Adding Social Interactions DDDDD"
-  random_percentage = [*30..70]
   negative_sides_actions = ["like", "dislike"]
   complementry_post_actions = ["repost", "comment", "none", "none"]
   complementry_image_actions = ["comment", "none"]
 
   all_users.each do |user|
-    user_trackings = user.trackings
+    user_trackings = user.tracking
 
     # Posts Calculations
     p "Posts Calculations"

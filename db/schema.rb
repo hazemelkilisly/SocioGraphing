@@ -11,7 +11,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 20141230224045) do
+ActiveRecord::Schema.define(version: 20150208202226) do
 
   create_table "comments", force: true do |t|
     t.integer  "commentable_id"
@@ -54,6 +54,13 @@ ActiveRecord::Schema.define(version: 20141230224045) do
 
   create_table "re_posts", force: true do |t|
     t.integer  "post_id"
+    t.integer  "user_id"
+    t.datetime "created_at"
+    t.datetime "updated_at"
+  end
+
+  create_table "tags", force: true do |t|
+    t.integer  "image_id"
     t.integer  "user_id"
     t.datetime "created_at"
     t.datetime "updated_at"

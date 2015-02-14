@@ -42,9 +42,48 @@ module Sociographer
         end
       end
 
+      # Object's distinct relations with count
+      def distinct_relations(from_cache=false)
+        # @@neo = Neography::Rest.new
+        begin
+          if from_cache
+            self_node = self.get_node
+            @neo.get_node_properties(node1)
+          else
+            self_node_id = self.get_node_id
+            qur = "start n=node("+self_node_id.to_s+") match n<-[r]-() return distinct(type(r)), count(r), r.magnitude;"
+            response = @@neo.execute_query(qur)
+            distinct_relations = response["data"]
+            return distinct_relations
+          end
+        rescue Exception
+          return nil
+        end
+      end
+
       # To Ensure updating the cached relation index in all tracking entities' nodes
       def ensure_deletion_fixes
+        begin
+          actionable_node = self.get_node
 
+          self_node_id = Post.first.get_node_id
+          qur = "start n=node("+pni.to_s+") match n-[r]->() return distinct(type(r)), count(r), r.magnitude;"
+          response = @@neo.execute_query(qur)
+          distinct_relations = response["data"]
+
+
+          if actionable_node
+            actor_nodes = actionable_node.both.map{|u| u}
+            actor_nodes.each do |an|
+              an[]
+            end
+          else
+            return nil
+          end
+
+        rescue
+          return nil
+        end
         # To Do  
       end
     end

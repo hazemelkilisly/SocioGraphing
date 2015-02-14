@@ -197,7 +197,7 @@ module Sociographer
             paths = []
             self_node.all_simple_paths_to(entity_node).incoming(:friends).depth(5).nodes.each do |path|
               # path << node.object_type.safe_constantize.find(node["object_id"])
-              in_between = path.map{|n| begin n.object_type.safe_constantize.find(n[:object_id]).id rescue Exception end }
+              in_between = path.map{|n| begin {entity_type: n.object_type, entity_id: n[:object_id]} rescue Exception end }
               path = {length: path.size-1, users: in_between}
               paths << path
               # puts "#{(path.size - 1)} degrees: " + path.map{|n| begin n.object_type.safe_constantize.find(n[:object_id]).name rescue Exception end }.join(" => friends =>") 
@@ -314,7 +314,7 @@ module Sociographer
             else
               magnitude = 1
             end
-            node_property = relation.to_s.parameterize.underscore.to_s+"_count"
+            node_property = "#{relation.to_s.parameterize.underscore.to_s}_count"
             self_node_property = self_node[node_property]
             if self_node_property
               self_node[node_property] = self_node_property+1
@@ -322,9 +322,9 @@ module Sociographer
               self_node[node_property] = 1
             end
             relation = relation.to_s.parameterize.underscore.to_sym
-            relation = Neography::Relationship.create(relation, self_node, actionable_node)
-            @@neo.set_relationship_properties(relation, {"magnitude" => magnitude, "created_at" => DateTime.now.to_i})
-            # self.update_actions_cache(self_node, relation, 1) #removed will be set to -1
+            relation_relationship = Neography::Relationship.create(relation, self_node, actionable_node)
+            @@neo.set_relationship_properties(relation_relationship, {"magnitude" => magnitude, "created_at" => DateTime.now.to_i})
+            # self.update_actions_cache(self_node, relation_relationship, 1) #removed will be set to -1
             return true
           else
             false
@@ -496,6 +496,120 @@ module Sociographer
         return returned_arr
       end
 
+      def classifier
+      end
+
+      def classify(entity)
+      end
+
+      def profile_feed(page= 1, per_page=20)
+        if per_page < 1
+          per_page = 20
+        end
+        skipped_no = (page-1)*per_page
+        if skipped_no < 0
+          skipped_no = 0
+        end
+
+        self_node_id = self.get_node_id
+        qur = "start n=node("+self_node_id.to_s+") match n-[r]->(z) return type(r), z, r.created_at ORDER BY r.created_at DESC SKIP #{skipped_no.to_s} LIMIT #{per_page}"
+        response = @@neo.execute_query(qur)
+        feeds = []
+        self_id = self.id
+        self_type = self.class.name
+        response["data"].each do |result|
+          activity_type = result[0]
+          attachment_data = result[1]["data"]
+          # attachment = attachment_data["object_type"].safe_constantize.find_by(id: attachment_data["object_id"])
+          activity_timestamp = Time.at(result[2]).to_datetime
+          if activity_type && attachment_data && activity_timestamp
+            feeds << FeedItem.new(activity_type, attachment_data["object_id"], attachment_data["object_type"], self_id, self_type, activity_timestamp, self)
+          end
+        end
+        f_by_attachment = feeds.group_by{|x| x.attachment_type}
+        f_by_attachment.each do |fbt|
+          attachments_ids = fbt[1].map{|u| u.attachment_id}.compact.uniq
+          attachments = fbt[0].safe_constantize.where(id: attachments_ids).to_a
+          fbt[1].each do |feed_item|
+            fi_attachment = attachments.select{ |a| a.id == feed_item.attachment_id}.first
+            if fi_attachment
+              feed_item.update_attachment(fi_attachment)
+            else
+              feed_item = nil
+            end
+          end
+        end
+        feeds = f_by_attachment.map{|u| u[1]}.flatten.compact
+        feeds.sort_by{ |f| f.timestamp }
+        feeds
+        # start n=node(1)
+        # match n-[r]->(z)
+        # return type(r), z, r.created_at
+        # ORDER BY r.created_at
+        # SKIP 10
+        # LIMIT 10;
+        # Time.at(1318996912).to_datetime
+      end
+
+      def feed(page=1, per_page=20)
+        if per_page < 1
+          per_page = 20
+        end
+        skipped_no = (page-1)*per_page
+        if skipped_no < 0
+          skipped_no = 0
+        end
+
+        self_node_id = self.get_node_id
+        qur = "start x=node("+self_node_id.to_s+") match x-[r:friends]->(y)-[r2]->(z) return type(r2), y, z, r2.created_at ORDER BY r2.created_at DESC SKIP #{skipped_no.to_s} LIMIT #{per_page}"
+        response = @@neo.execute_query(qur)        
+        feeds = []
+        response["data"].each do |result|
+          activity_type = result[0]
+          actor_data = result[1]["data"]
+          # actor = actor_data["object_type"].safe_constantize.find_by(id: actor_data["object_id"])
+          attachment_data = result[2]["data"]
+          # attachment = attachment_data["object_type"].safe_constantize.find_by(id: attachment_data["object_id"])
+          activity_timestamp = Time.at(result[3]).to_datetime
+          if activity_type && actor_data && attachment_data && activity_timestamp
+            feeds << FeedItem.new(activity_type, attachment_data["object_id"], attachment_data["object_type"], actor_data["object_id"], actor_data["object_type"], activity_timestamp)
+          end
+        end
+        f_by_attachment = feeds.group_by{|x| x.attachment_type}
+        f_by_attachment.each do |fbt|
+          attachments_ids = fbt[1].map{|u| u.attachment_id}.compact.uniq
+          attachments = fbt[0].safe_constantize.where(id: attachments_ids).to_a
+          fbt[1].each do |feed_item|
+            fi_attachment = attachments.select{ |a| a.id == feed_item.attachment_id}.first
+            if fi_attachment
+              feed_item.update_attachment(fi_attachment)
+            else
+              feed_item = nil
+            end
+          end
+        end
+        f_by_actor = f_by_attachment.map{|u| u[1]}.flatten.compact
+        f_by_actor = f_by_actor.group_by{|x| x.actor_type}
+        f_by_actor.each do |fbt|
+          actors_ids = fbt[1].map{|u| u.actor_id}.compact.uniq
+          actors = fbt[0].safe_constantize.where(id: actors_ids).to_a
+          fbt[1].each do |feed_item|
+            fi_actor = actors.select{ |a| a.id == feed_item.actor_id}.first
+            if fi_actor
+              feed_item.update_actor(fi_actor)
+            else
+              feed_item = nil
+            end
+          end
+        end
+        feeds = f_by_actor.map{|u| u[1]}.flatten.compact
+        feeds.sort_by{ |f| f.timestamp }
+        feeds
+        # start n=node(1)
+        # match n-[r:friends]->(z)-[r2]-(x)
+        # return type(r2), z, x, r.created_at
+        # ORDER BY r.created_at;
+      end
 ## TO DO
  # b_hash = b.instance_variable_get("@categories")
  # y = {:Family => :Banned}

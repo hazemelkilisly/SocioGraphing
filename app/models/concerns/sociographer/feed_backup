@@ -1,0 +1,104 @@
+            if per_page < 1
+          per_page = 20
+        end
+        skipped_no = (page-1)*per_page
+        if skipped_no < 0
+          skipped_no = 0
+        end
+
+        self_node_id = User.first.get_node_id
+        qur = "start x=node("+self_node_id.to_s+") match x-[r:friends]->(y)-[r2]->(z) return type(r2), y, z, r2.created_at ORDER BY r2.created_at DESC SKIP #{skipped_no.to_s} LIMIT #{per_page}"
+        response = @@neo.execute_query(qur)        
+        feeds = []
+        response["data"].each do |result|
+          activity_type = result[0]
+          actor_data = result[1]["data"]
+          actor = actor_data["object_type"].safe_constantize.find_by(id: actor_data["object_id"])
+          attachment_data = result[2]["data"]
+          attachment = attachment_data["object_type"].safe_constantize.find_by(id: attachment_data["object_id"])
+          activity_timestamp = Time.at(result[3]).to_datetime
+          if activity_type && actor && attachment && activity_timestamp
+            feeds << FeedItem.new(activity_type, attachment, actor, activity_timestamp)
+          end
+        end
+        feeds
+
+>>>> NEW
+      if per_page < 1
+          per_page = 20
+        end
+        skipped_no = (page-1)*per_page
+        if skipped_no < 0
+          skipped_no = 0
+        end
+
+        self_node_id = self.get_node_id
+        qur = "start x=node("+self_node_id.to_s+") match x-[r:friends]->(y)-[r2]->(z) return type(r2), y, z, r2.created_at ORDER BY r2.created_at DESC SKIP #{skipped_no.to_s} LIMIT #{per_page}"
+        response = @@neo.execute_query(qur)        
+        feeds = []
+        response["data"].each do |result|
+          activity_type = result[0]
+          actor_data = result[1]["data"]
+          # actor = actor_data["object_type"].safe_constantize.find_by(id: actor_data["object_id"])
+          attachment_data = result[2]["data"]
+          # attachment = attachment_data["object_type"].safe_constantize.find_by(id: attachment_data["object_id"])
+          activity_timestamp = Time.at(result[3]).to_datetime
+          if activity_type && actor_data && attachment_data && activity_timestamp
+            feeds << FeedItem.new(activity_type, attachment_data["object_id"], attachment_data["object_type"], actor_data["object_id"], actor_data["object_type"], activity_timestamp)
+          end
+        end
+        f_by_attachment = feeds.group_by{|x| x.attachment_type}
+        f_by_attachment.each do |fbt|
+          attachments_ids = fbt[1].map{|u| u.attachment_id}.compact.uniq
+          attachments = fbt[0].safe_constantize.where(id: attachments_ids).to_a
+          fbt[1].each do |feed_item|
+            fi_attachment = attachments.select{ |a| a.id == feed_item.attachment_id}.first
+            feed_item.update_attachment(fi_attachment) if fi_attachment
+          end
+        end
+        f_by_actor = f_by_attachment.map{|u| u[1]}.flatten
+        f_by_actor = f_by_actor.group_by{|x| x.actor_type}
+        f_by_actor.each do |fbt|
+          actors_ids = fbt[1].map{|u| u.actor_id}.compact.uniq
+          actors = fbt[0].safe_constantize.where(id: actors_ids).to_a
+          fbt[1].each do |feed_item|
+            fi_actor = actors.select{ |a| a.id == feed_item.actor_id}.first
+            feed_item.update_actor(fi_actor) if fi_actor
+          end
+        end
+        feeds = f_by_actor.map{|u| u[1]}.flatten
+        feeds.sort_by{ |f| f.timestamp }
+        feeds
+>>>>>>> FEEDITEM OLD
+  class FeedItem
+    attr_reader :activity_type, :attachment, :actor, :timestamp
+
+    def initialize(activity_type, attachment, actor, timestamp)
+      @activity_type = activity_type
+      @attachment = attachment
+      @actor = actor
+      @timestamp = timestamp
+    end
+  end
+
+>>>>>>>> FeedItem NEW
+    attr_reader :activity_type, :attachment, :attachment_id, :attachment_type, :actor, :actor_id, :actor_id, :actor_type, :timestamp
+
+    def initialize(activity_type, attachment_id, attachment_type, actor_id, actor_type, timestamp)
+      @activity_type = activity_type
+      @attachment = nil
+      @attachment_id = attachment_id
+      @attachment_type = attachment_type
+      @actor = nil
+      @actor_id = actor_id
+      @actor_type = actor_type
+      @timestamp = timestamp
+    end
+
+    def update_attachment(attachment)
+      @attachment = attachment
+    end
+
+    def update_actor(actor)
+      @actor = actor
+    end

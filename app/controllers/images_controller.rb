@@ -31,6 +31,19 @@ class ImagesController < ApplicationController
     redirect_to @image
   end
 
+  def tag
+    if params[:tagged_id]
+      tagged = User.find(params[:tagged_id])
+      if tagged
+        tag = Tag.create(user: tagged, image: @image)
+        if tag
+          tagged.make_relation(@image, :tagged)
+        end
+      end
+    end
+    redirect_to @image
+  end
+
   def destroy
     @image.destroy
     redirect_to current_user
