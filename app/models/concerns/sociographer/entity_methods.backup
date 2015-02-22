@@ -1,0 +1,175 @@
+def all_relations_sorted
+  begin
+    self_node_id = self.get_node_id
+    qur = "start n=node("+self_node_id.to_s+") match n-[r]->() return type(r) ORDER BY r.created_at DESC;"
+    response = @@neo.execute_query(qur)
+    all_relations = response["data"]
+    return all_relations
+  rescue Exception
+    return nil
+  end
+end
+
+# User's distinct relations with count
+def distinct_relations(from_cache=true)
+  begin
+    result_found = false
+    if from_cache
+      self_node = self.get_node
+      distinct_relations = @@neo.get_node_properties(self_node)
+      distinct_relations.except!("object_type", "object_id")
+      distinct_relations = distinct_relations.map{|p|p}
+      unless distinct_relations.empty?
+        result_found = true
+      end
+    end
+    unless result_found
+      self_node_id = self.get_node_id
+      qur = "start n=node("+self_node_id.to_s+") match n-[r]->() return distinct(type(r)), count(r);"
+      response = @@neo.execute_query(qur)
+      distinct_relations = response["data"]
+    end
+    return distinct_relations
+  rescue Exception
+    return nil
+  end
+end
+
+
+def all_relations_weights(from_cache=false)
+  begin
+    result_found = false
+    if from_cache
+      self_node = self.get_node
+      distinct_relations = @@neo.get_node_properties(self_node)
+      distinct_relations.except!("object_type", "object_id")
+      distinct_relations = distinct_relations.map{|p|p}
+      unless distinct_relations.empty?
+        result_found = true
+      end
+    end
+    unless result_found
+      self_node_id = self.get_node_id
+      qur = "start n=node("+self_node_id.to_s+") match n-[r]->() return distinct(type(r)), count(r);"
+      response = @@neo.execute_query(qur)
+      distinct_relations = response["data"]
+    end
+    if distinct_relations
+      total_weight = distinct_relations.inject(0) {|sum,y| sum+y[1]}.to_f
+      if total_weight
+        all_relatios_w = distinct_relations.map{|u| relation: u[0], weight: (1-(u[1].to_f/total_weight))}
+        return all_relatios_w
+      else
+        return[]
+      end
+    else
+      return distinct_relations
+    end
+  rescue Exception
+    return nil
+  end
+end
+
+# User's specific relation with count // DONE
+def relation_count(relation, from_cache=true)
+  begin
+    relation = relation.to_s.parameterize.underscore.to_s
+    relation_found = false
+    if from_cache
+      self_node = self.get_node
+      relation_count = self_node[relation]
+      if relation_count
+        relation_found = true
+      end
+    end
+    unless relation_found
+      self_node_id = self.get_node_id
+      qur = "start n=node(#{self_node_id.to_s}) match n-[r:#{relation}]->() return count(r);"
+      response = @@neo.execute_query(qur)
+      relation_count = response["data"].try(:flatten).try(:first)
+    end
+    return relation_count
+  rescue Exception
+    return nil
+  end
+end
+
+# Calculates % of each relation from total relations count
+def relation_weight(relation, from_cache=true)
+  begin
+    relation = relation.to_s.parameterize.underscore.to_s
+    if from_cache
+      total_relations = self.distinct_relations(from_cache)
+      total_relations_weights = total_relations.map{|u| u.try(:second)}.compact.flatten.sum
+      relation_hash = total_relations.select{|u| u.try(:first)==relation}.first
+      relation_hash ? rel_count=relation_hash[1] : rel_count=0
+    else
+      self_node_id = self.get_node_id
+      qur = "start n=node(#{self_node_id.to_s}) match n-[r:#{relation}]->() return count(r);"
+      response = @@neo.execute_query(qur)
+      rel_count = response["data"].try(:flatten).try(:first)
+      
+      qur = "start n=node(#{self_node_id.to_s}) match n-[r]->() return count(r);"
+      response = @@neo.execute_query(qur)
+      total_relations_weights = response["data"].try(:flatten).try(:first)
+    end
+    if rel_count && !rel_count.try(:zero?) && total_relations_weights
+      rel_count = rel_count.to_f
+      total_relations_weights = total_relations_weights.to_f
+      return 1-(rel_count/total_relations_weights)
+    else
+      return 0
+    end
+  rescue Exception
+    return 0
+  end
+end
+
+
+
+# To calculate a number representing the relation between you and the entity:
+  # according to the weight of the relations, their magnitude, and their frequencies
+  # according to each user
+def calculate_relation(entity, self_relations_weights=nil, self_relation_weight=nil)
+  if entity.is_a?(Sociographer::Entity) && (self!=entity)
+    self_node_id = self.get_node_id
+    entity_node_id = entity.get_node_id
+    if self_node_id && entity_node_id
+      unless self_relations_weights
+        self_relations_weights = self.all_relations_weights
+      end
+      entity_relations_weights = entity.all_relations_weights
+      qur = "START source=node(#{self_node_id}), destination=node(#{entity_node_id}) MATCH p = source<-[*2..2]->destination RETURN RELATIONSHIPS(p);"
+      relations = @@neo.execute_query(qur)["data"]
+      weights = []
+      relations.each do |relation|
+        relation = relation.flatten
+
+        source_relation = relation.first
+        p source_relation
+        source_relation_type = source_relation["type"]
+        source_relation_magnitude = source_relation["data"]["magnitude"]
+        self_rel_weight = self_relations_weights.select{|u| u[:relation] == source_relation_type}.first
+        source_relation_weight = rel_weight*source_relation_magnitude
+        p "source_relation_weight (#{source_relation["self"].split("/").last} of type #{source_relation_type}) = #{source_relation_weight}"
+
+        destination_relation = relation.last
+        p destination_relation
+        destination_relation_type = destination_relation["type"]
+        destination_relation_magnitude = destination_relation["data"]["magnitude"]
+        entity_rel_weight = entity_relations_weights.select{|u| u[:relation] == destination_relation_type}.first
+        destination_relation_weight = entity_rel_weight*destination_relation_magnitude
+        p "destination_relation_weight (#{destination_relation["self"].split("/").last} of type #{destination_relation_type}) = #{destination_relation_weight}"
+
+        both_weights = source_relation_weight*destination_relation_weight
+        weights << both_weights
+      end
+      all_weights = weights.sum
+      all_weights
+    else
+      0
+    end
+  else
+    0
+  end
+end

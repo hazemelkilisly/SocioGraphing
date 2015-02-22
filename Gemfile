@@ -25,11 +25,14 @@ gem 'sdoc', '~> 0.4.0',          group: :doc
 
 # Spring speeds up development by keeping your application running in the background. Read more: https://github.com/rails/spring
 gem 'spring',        group: :development
+# gem 'classifier-reborn'
+gem 'knnball'
+# gem 'k_means'
+# gem 'rmagick'
 gem 'neography'
 gem 'carrierwave'
 gem 'devise'
 gem 'faker'#, '~> 1.4.3'
-gem 'classifier'
 # Use ActiveModel has_secure_password
 # gem 'bcrypt', '~> 3.1.7'
 

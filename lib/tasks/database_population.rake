@@ -1,13 +1,13 @@
 task :populate_database => :environment do
 
   # needed number of users
-  no_of_users = 10
+  no_of_users = 50
   # min..max number of posts for each user
-  random_posts_array = [*5..10]
+  random_posts_array = [*5..15]
   # random images upload count for each user
-  random_images_array = [*0..3]
+  random_images_array = [*0..5]
   # random social interactions number (% from total images -divided in random-) for posts/image by tracked users
-  random_percentage = [*30..70]
+  random_percentage = [*25..70]
 
   # Initializing DB with Data
   p "AAAAA Initializing DB with Data AAAAA"
@@ -127,7 +127,7 @@ task :populate_database => :environment do
   p "DDDDD Adding Social Interactions DDDDD"
   negative_sides_actions = ["like", "dislike"]
   complementry_post_actions = ["repost", "comment", "none", "none"]
-  complementry_image_actions = ["comment", "none"]
+  complementry_image_actions = ["comment", "comment", "tagged_in", "none"]
 
   all_users.each do |user|
     user_trackings = user.tracking
@@ -193,7 +193,7 @@ task :populate_database => :environment do
         user.save
         user.make_relation(image, :liked)
         p "Liked Image =>> User: #{user.name}"
-      else "dislike"
+      when "dislike"
         user.disliked_images << image
         user.save
         user.make_relation(image, :disliked, -1)
@@ -207,6 +207,10 @@ task :populate_database => :environment do
         user.comments.create(commentable: image, content: comment_content)
         user.make_relation(image, :commented)
         p "Commented on Image =>> User: #{user.name}"
+      when "tagged_in"
+        Tag.create(user: user, image: image)
+        user.make_relation(image, :tagged_in)
+        p "Tagged in Image =>> User: #{user.name}"
       else
         false
       end
