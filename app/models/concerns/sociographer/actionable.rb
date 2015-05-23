@@ -6,85 +6,60 @@ module Sociographer
       after_create :create_actionable
       before_destroy :ensure_deletion_fixes
       
-      @@neo = Neography::Rest.new
-
       # Call-Back after Creation of Actionable (e.g. Post)
         # to create the corresponding node in neo4j DB
       def create_actionable
-        Neography::Node.create("object_id" => self.id, "object_type" => self.class.to_s)
+        actionable_node = Neography::Node.create("object_id" => self.id, "object_type" => self.class.to_s)
+        actionable_node.add_to_index("actionables_nodes_index", "class0id", "#{self.class.to_s}0#{self.id}")
       end
 
-      # Get only the id of the corresponding node to the actionable
-      def get_node_id
-        # @neo = Neography::Rest.new
-        begin
-          qur = "MATCH (n {object_id: "+self.id.to_s+", object_type: \'"+self.class.to_s+"\' }) RETURN n LIMIT 1"
-          response = @@neo.execute_query(qur)
+      def get_node_id(query)
+        if query
+          response = $neo.execute_query(query)
           node_id = response["data"].flatten.first["metadata"]["id"]
-          return node_id
-        rescue Exception
-          return nil
         end
       end
 
-      # Get the corresponding node to the actionable
-      def get_node
-        # @neo = Neography::Rest.new
+      # Get only the id of the corresponding node to the entity
+      def entity_node_id
+        node = nil          
         begin
-          # qur = "MATCH (n {object_id: "+self.id.to_s+", object_type: \'"+self.class.to_s+"\' }) RETURN n LIMIT 1"
-          # response = @neo.execute_query(qur)
-          # node_id = response["data"].flatten.first["metadata"]["id"]
-          node_id = self.get_node_id
-          node = (node_id ? Neography::Node.load(node_id, @@neo) : nil)
-          return node
-        rescue Exception
-          return nil
-        end
-      end
-
-      # Object's distinct relations with count
-      def distinct_relations(from_cache=false)
-        # @@neo = Neography::Rest.new
-        begin
-          if from_cache
-            self_node = self.get_node
-            @neo.get_node_properties(node1)
-          else
-            self_node_id = self.get_node_id
-            qur = "start n=node("+self_node_id.to_s+") match n<-[r]-() return distinct(type(r)), count(r), r.magnitude;"
-            response = @@neo.execute_query(qur)
-            distinct_relations = response["data"]
-            return distinct_relations
-          end
-        rescue Exception
-          return nil
-        end
-      end
-
-      # To Ensure updating the cached relation index in all tracking entities' nodes
-      def ensure_deletion_fixes
-        begin
-          actionable_node = self.get_node
-
-          self_node_id = Post.first.get_node_id
-          qur = "start n=node("+pni.to_s+") match n-[r]->() return distinct(type(r)), count(r), r.magnitude;"
-          response = @@neo.execute_query(qur)
-          distinct_relations = response["data"]
-
-
-          if actionable_node
-            actor_nodes = actionable_node.both.map{|u| u}
-            actor_nodes.each do |an|
-              an[]
-            end
-          else
-            return nil
-          end
-
+          node = Neography::Node.find("actionables_nodes_index", "class0id", "#{self.class.name}0#{self.id}")
         rescue
-          return nil
         end
-        # To Do  
+        if node 
+          node_id = node.neo_id.to_i
+        else
+          query = "MATCH (n {object_id: #{self.id.to_s}, object_type: \'#{self.class.name}\' }) RETURN n LIMIT 1"
+          get_node_id(query)
+        end
+      end
+
+      def get_node(node_id)
+        node_id ? Neography::Node.load(node_id, $neo) : nil
+      end
+
+      # Get the corresponding node to the entity
+      def entity_node(node_id=nil)
+        node = nil
+        if node_id
+          node = get_node(node_id)
+        else
+          begin
+            node = Neography::Node.find("actionables_nodes_index", "class#id", "#{self.class.name}##{self.id}")
+          rescue
+          end
+          unless node
+            node = get_node(self.entity_node_id)
+          end
+        end
+        return node
+      end
+
+      def ensure_deletion_fixes
+        self_node = self.entity_node
+        $neo.remove_node_from_index("actionables_nodes_index", self_node)
+        self_node.del
       end
     end
   end
