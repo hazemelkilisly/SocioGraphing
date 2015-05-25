@@ -1,3 +1,4 @@
+require 'will_paginate/array'
 Neography.configure do |config|
   config.protocol       = "http://"
   config.server         = "localhost"

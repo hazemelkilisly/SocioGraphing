@@ -64,13 +64,13 @@ module Sociographer
       def get_node_id(query)
         if query
           response = $neo.execute_query(query)
-          node_id = response["data"].flatten.first["metadata"]["id"]
+          node_id = response["data"].flatten.first["metadata"]["id"].try(:to_i)
         end
       end
 
       # Get only the id of the corresponding node to the entity
       def entity_node_id
-        p "METHOD: entity_node_id"
+        # # p "METHOD: entity_node_id"
         node_id = nil          
         begin
           node = Neography::Node.find("entities_nodes_index", "class0id", "#{self.class.name}0#{self.id}")
@@ -85,19 +85,19 @@ module Sociographer
       end
 
       def privacy_node_id
-        p "METHOD: privacy_node_id"
+        # # p "METHOD: privacy_node_id"
         query = "MATCH (n {refrence_id: #{self.id.to_s}, object_type: \'privacy\', refrence_type: \'#{self.class.name}\' }) RETURN n LIMIT 1"
         get_node_id(query)
       end
 
       def activities_node_id
-        p "METHOD: activities_node_id"
+        # # p "METHOD: activities_node_id"
         query = "MATCH (n {refrence_id: #{self.id.to_s}, object_type: \'activities\', refrence_type: \'#{self.class.name}\' }) RETURN n LIMIT 1"
         get_node_id(query)
       end
 
       def activities_list_node_id
-        p "METHOD: activities_list_node_id"
+        # # p "METHOD: activities_list_node_id"
         query = "MATCH (n {refrence_id: #{self.id.to_s}, object_type: \'activities_list\', refrence_type: \'#{self.class.name}\' }) RETURN n LIMIT 1"
         get_node_id(query)
       end
@@ -106,14 +106,14 @@ module Sociographer
 
       ### NODES FETCHING ####
 
-      def get_node(node_id)
-        p "METHOD: get_node(#{node_id})"
+      def get_node(node_id=nil)
+        # # p "METHOD: get_node(#{node_id})"
         node_id ? Neography::Node.load(node_id, $neo) : nil
       end
 
       # Get the corresponding node to the entity
       def entity_node(node_id=nil)
-        p "METHOD: entity_node(#{node_id})"
+        # # p "METHOD: entity_node(#{node_id})"
         node = nil
         if node_id
           node = get_node(node_id)
@@ -130,28 +130,30 @@ module Sociographer
       end
 
       def privacy_node(node_id=nil)
-        p "METHOD: privacy_node(#{node_id})"
+        # # p "METHOD: privacy_node(#{node_id})"
         get_node(node_id||self.privacy_node_id)
       end
 
       def activities_node(node_id=nil)
-        p "METHOD: activities_node(#{node_id})"
+        # # p "METHOD: activities_node(#{node_id})"
         get_node(node_id||self.activities_node_id)
       end
 
       def activities_list_node(node_id=nil)
-        p "METHOD: activities_list_node(#{node_id})"
+        # # p "METHOD: activities_list_node(#{node_id})"
         get_node(node_id||self.activities_list_node_id)
       end
       ### NODES IDs FETCHING FINISHED ###
 
       def prepare_activity_string(activity)
-        p "METHOD: prepare_activity_string(#{activity})"
-        return activity.to_s.parameterize.underscore.to_s
+        # # p "METHOD: prepare_activity_string(#{activity})"
+        if activity
+          return activity.to_s.parameterize.underscore.to_s
+        end
       end
 
-      def prepare_magnitude_value(magnitude)
-        p "METHOD: prepare_magnitude_value(#{magnitude})"
+      def prepare_magnitude_value(magnitude=nil)
+        # p "METHOD: prepare_magnitude_value(#{magnitude})"
         if magnitude
           magnitude = magnitude.try(:to_f).try(:round)
           if magnitude < 0
@@ -165,7 +167,7 @@ module Sociographer
       end
 
       def prepare_timestamp(timestamp)
-        p "METHOD: prepare_timestamp(#{timestamp})"
+        # p "METHOD: prepare_timestamp(#{timestamp})"
         if timestamp && ["DateTime", "Time"].include?(timestamp.class.name)
           return timestamp.to_i
         else
@@ -183,14 +185,14 @@ module Sociographer
         # activity_types: ["dis liked", "dis-liked", "disliked", :disliked, :dis_liked] || "disliked" || :disliked
 
       def all_activities_types
-        p "METHOD: all_activities_types"
+        # p "METHOD: all_activities_types"
         activities_types = $neo.list_relationship_types 
         activities_types = activities_types-["privacy", "activities", "activities_list"]
         return activities_types
       end
 
       def activities_counts(options={})
-        p "METHOD: activities_counts(#{options.to_s})"
+        # p "METHOD: activities_counts(#{options.to_s})"
         self_node = options[:self_node] || self.entity_node
         activities_node = options[:activities_node] || self.activities_node(self_node[:activities_node_id])
         activities_counts = activities_node[:activities_counts]
@@ -210,7 +212,7 @@ module Sociographer
 
         if options[:weights]
           sum = activities_counts.inject(0) {|sum,y| sum+y[1]}.to_f
-          activities_counts = Hash[ activities_counts.map{ |key,value| [key,((value.to_f/sum)*100)] } ]
+          activities_counts = Hash[ activities_counts.map{ |key,value| [key,((value.to_f/sum)*100).round(2)] } ]
         end
         if options[:activity_types]
           if options[:activity_types].is_a?(Array)
@@ -229,7 +231,126 @@ module Sociographer
         return activities_counts
       end
 
+      def weight_checker(activity_timestamp, activity_type, activities_sets)
+        # p "METHOD: weight_checker(#{activity_timestamp.to_s}, #{activity_type.to_s}, #{activities_sets.to_s})"
+        if activities_sets.count < 4
+          return activities_sets[0][:list][activity_type] || 0
+        else 
+          case
+          when (activities_sets[0][:starting_timestamp] <= activity_timestamp) && (activity_timestamp < activities_sets[0][:ending_timestamp])
+            weight = activities_sets[0][:list][activity_type] || 0
+            return weight*0.25
+          when (activities_sets[1][:starting_timestamp] <= activity_timestamp) && (activity_timestamp < activities_sets[1][:ending_timestamp])
+            weight = activities_sets[1][:list][activity_type] || 0
+            return weight*0.5
+          when (activities_sets[2][:starting_timestamp] <= activity_timestamp) && (activity_timestamp < activities_sets[2][:ending_timestamp])
+            weight = activities_sets[2][:list][activity_type] || 0
+            return weight*0.75
+          else
+            return activities_sets[3][:list][activity_type] || 0
+          end
+        end
+      end
+      # To calculate a number representing the relation between you and the entity:
+        # according to the weight of the relations, their magnitude, and their frequencies
+        # according to each user
+      def calculate_relation(entity, options={})
+        # p "METHOD: calculate_relation(#{entity.to_s}, #{options.to_s})"
+        if entity.is_a?(Sociographer::Entity) && (self!=entity)
+          ## USER DATA
+          self_node = options[:self_node] || self.entity_node
+          self_node_id = self_node.neo_id.to_i
+          
+          self_activities_node = options[:activities_node] || self.activities_node(self_node[:activities_node_id])
+          # self_activities_weights = options[:self_weights] || self.activities_counts(weights: true, activities_node: self_activities_node)
+          self_activities_sets = options[:activities_sets] || YAML.load(self_activities_node[:activities_sets])
+          self_entities_weights = options[:entities_weights] || YAML.load(self_activities_node[:entities_weights])
+          ##
 
+          ## ENTITY DATA
+          entity_node = entity.entity_node
+          entity_node_id = entity_node.neo_id.to_i
+          
+          entity_activities_node = entity.activities_node(entity_node[:activities_node_id])
+          # entity_activities_weights = entity.activities_counts(weights: true, activities_node: entity_activities_node)
+          entity_activities_sets = YAML.load(entity_activities_node[:activities_sets])
+          entity_entities_weights = YAML.load(entity_activities_node[:entities_weights])
+          ## 
+
+          weight_in_between = nil
+
+          follow_relation = self_entities_weights[entity_node_id]
+          if follow_relation
+            relation_weight = follow_relation[:weight]
+            start_last_updated_count = follow_relation[:start_last_updated_count]
+            entity_last_updated_count = follow_relation[:end_last_updated_count]
+            if (relation_weight!=0) && ((start_last_updated_count/(self_activities_node[:past_activities_count]+self_activities_node[:current_activities_count]).to_f) <= 0.05) || ( (entity_last_updated_count/(entity_activities_node[:past_activities_count]+entity_activities_node[:current_activities_count]).to_f) <= 0.05)
+              weight_in_between = relation_weight
+            end
+          end
+
+          unless weight_in_between
+            self_activities_list_node = options[:activities_list_node] || self.activities_list_node(self_node[:activities_list_node_id])
+            self_activities_list = options[:activities_list] || YAML.load(self_activities_list_node[:activities])
+  
+            entity_activities_list_node = entity.activities_list_node(entity[:activities_list_node_id])
+            entity_activities_list = YAML.load(entity_activities_list_node[:activities])
+
+
+            self_grouped_activities = self_activities_list.group_by{|a| a[:activity_node_id]}
+            entity_grouped_activities = entity_activities_list.group_by{|a| a[:activity_node_id]}
+
+            self_grouped_activities_nodes = self_grouped_activities.map{|a| a[0]}.compact.uniq
+            entity_grouped_activities_nodes = entity_grouped_activities.map{|a| a[0]}.compact.uniq
+            common_nodes = self_grouped_activities_nodes & entity_grouped_activities_nodes
+
+            self_common_activities = self_grouped_activities.select{|k,v| common_nodes.include?(k)}
+            entity_common_activities = entity_grouped_activities.select{|k,v| common_nodes.include?(k)}
+
+            weight_in_between = 0
+            self_common_activities.each do |actionable_node|
+              self_node_acts = actionable_node[1]
+              entity_node_acts = entity_common_activities[actionable_node[0]]
+              
+              self_actionable_node_acts_sum = 0
+              self_node_acts.each do |act|
+                activity_type = act[:activity_type]
+                timestamp = act[:timestamp]
+                magnitude = act[:magnitude]
+                weight = (1-weight_checker(timestamp, activity_type, self_activities_sets))*magnitude
+                self_actionable_node_acts_sum += weight
+              end
+
+              entity_actionable_node_acts_sum = 0
+              entity_node_acts.each do |act|
+                activity_type = act[:activity_type]
+                timestamp = act[:timestamp]
+                magnitude = act[:magnitude]
+                weight = (1-weight_checker(timestamp, activity_type, entity_activities_sets))*magnitude
+                entity_actionable_node_acts_sum += weight
+              end
+
+              weight_in_between += (self_actionable_node_acts_sum*entity_actionable_node_acts_sum)
+            end
+            self_entities_weights[entity_node_id] = {start_last_updated_count: (self_activities_node[:past_activities_count]+self_activities_node[:current_activities_count]), end_last_updated_count: (entity_activities_node[:past_activities_count]+entity_activities_node[:current_activities_count]), weight: weight_in_between}
+            entity_entities_weights[self_node_id] = {start_last_updated_count:  (entity_activities_node[:past_activities_count]+entity_activities_node[:current_activities_count]), end_last_updated_count: (self_activities_node[:past_activities_count]+self_activities_node[:current_activities_count]), weight: weight_in_between}
+            
+            self_activities_node[:entities_weights] = YAML.dump(self_entities_weights)
+            entity_activities_node[:entities_weights] = YAML.dump(entity_entities_weights)
+          end
+          if weight_in_between > self_node[:top_follower_weight]
+            self_node[:top_follower_weight] = weight_in_between
+          end
+          if weight_in_between > entity_node[:top_follower_weight]
+            entity_node[:top_follower_weight] = weight_in_between
+          end
+          return weight_in_between
+        end
+      end
+
+      # def activities(options)
+      # end
+      
       ### ACTIONS TRACKING FINISHED ###
 
 
@@ -242,7 +363,7 @@ module Sociographer
         # if none from the above is passed as input: then the input is in the form of [entity_node, ...] >> and the result will be in the form of [entity_object, ...]
 
       def fetch_entities(entities_nodes_list, options={})
-        p "METHOD: fetch_entities(#{entities_nodes_list}, #{options.to_s})"
+        # p "METHOD: fetch_entities(#{entities_nodes_list}, #{options.to_s})"
         if options[:only_ids]
           entities_nodes_list = entities_nodes_list.map{|n_id| Neography::Node.load(n_id, $neo) }.compact.uniq
         end
@@ -297,7 +418,7 @@ module Sociographer
         # self_activities_list: [{timestamp: time, actionable_node: node, activity_type: activity_type}, ...]
         # sort: true
       def weight_entities(entities_list, options={})
-        p "METHOD: weight_entities(#{entities_list}, #{options.to_s})"
+        # p "METHOD: weight_entities(#{entities_list}, #{options.to_s})"
         ratings = []
 
         self_node = options[:self_node] || self.entity_node
@@ -323,7 +444,7 @@ module Sociographer
 
       # To Track the entity
       def follow(followed)
-        p "METHOD: follow(#{followed.to_s})"
+        # p "METHOD: follow(#{followed.to_s})"
         if followed.is_a?(Sociographer::Entity) && !self.follows?(followed)
           self.make_activity(actionable: followed, activity_type: "follow")
         end
@@ -331,7 +452,7 @@ module Sociographer
 
       # To unTrack the entity
       def unfollow(followed)
-        p "METHOD: unfollow(#{followed.to_s})"
+        # p "METHOD: unfollow(#{followed.to_s})"
         if followed.is_a?(Sociographer::Entity)
           self_node = self.entity_node
           followed_node = followed.entity_node
@@ -341,7 +462,7 @@ module Sociographer
       end
 
       def get_follows(relation, options={})
-        p "METHOD: get_follows(#{relation}, #{options.to_s})"
+        # p "METHOD: get_follows(#{relation}, #{options.to_s})"
         self_node = self.entity_node
         followers = []
         if relation == "followed"
@@ -357,19 +478,19 @@ module Sociographer
 
       # To get all trackers
       def followers(options={})
-        p "METHOD: followers(#{options.to_s})"
+        # p "METHOD: followers(#{options.to_s})"
         get_follows("followers", options)
       end
 
       # To get all tracking entities
       def followed(options={})
-        p "METHOD: followed(#{options.to_s})"
+        # p "METHOD: followed(#{options.to_s})"
         get_follows("followed", options)
       end
 
       # To get friends: The common entities between trackers and trackings
       def friends(options={})
-        p "METHOD: friends(#{options.to_s})"
+        # p "METHOD: friends(#{options.to_s})"
         friends = self.followers(only_nodes: true) & self.followed(only_nodes: true)
         unless options[:only_nodes]
           friends = fetch_entities(friends, options)
@@ -379,7 +500,7 @@ module Sociographer
 
       # To check if tracking the entity or not
       def follows?(followed)
-        p "METHOD: follows?(#{followed.to_s})"
+        # p "METHOD: follows?(#{followed.to_s})"
         if followed.is_a?(Sociographer::Entity)
           self_node_id = self.entity_node_id
           followed_node_id = followed.entity_node_id
@@ -397,7 +518,7 @@ module Sociographer
 
       # To check if friend with the entity or net
       def friend?(followed)
-        p "METHOD: friend?(#{followed.to_s})"
+        # p "METHOD: friend?(#{followed.to_s})"
         if followed.is_a?(Sociographer::Entity)
           if self.follows?(followed) && followed.follows?(self)
             true
@@ -407,9 +528,10 @@ module Sociographer
         end
       end
 
+      ## Problem that it gets the already friends
       # Suggest friends: friends of friends
       def friend_suggestions(limit=30)
-        p "METHOD: friend_suggestions(#{limit.to_s})"
+        # p "METHOD: friend_suggestions(#{limit.to_s})"
         self_node = self.entity_node
         self_node_id = self_node.neo_id.to_i
         recommendations = self_node.incoming(:follow).order("breadth first").uniqueness("node global").depth(2).map{|n| n }.flatten.compact.uniq
@@ -426,7 +548,7 @@ module Sociographer
 
       # Get all paths of entities between you and the entity (like linkedin)
       def degrees_of_separation(entity, options={})
-        p "METHOD: degrees_of_separation(#{entity.to_s}, #{limit.to_s})"
+        # p "METHOD: degrees_of_separation(#{entity.to_s}, #{limit.to_s})"
         if entity.is_a?(Sociographer::Entity)
           if options[:shortest]
             shortest_degrees_of_separation(entity)
@@ -464,7 +586,7 @@ module Sociographer
 
       # Get the shortest path of entities between you and the entity (like linkedin)
       def shortest_degrees_of_separation(entity, options={})
-        p "METHOD: shortest_degrees_of_separation(#{entity.to_s}, #{options.to_s})"
+        # p "METHOD: shortest_degrees_of_separation(#{entity.to_s}, #{options.to_s})"
         if entity.is_a?(Sociographer::Entity)
           self_node = self.entity_node
           entity_node = entity.entity_node
@@ -485,7 +607,7 @@ module Sociographer
       ### SOCIAL RECOMMENDATION FINISHED ###
 
       def update_activities(options={})
-        p "METHOD: update_activities(#{options.to_s})"
+        # p "METHOD: update_activities(#{options.to_s})"
         self_node = options[:self_node] || self.entity_node
         activities_node = options[:activities_node] || self.activities_node(self_node[:activities_node_id])
         activities_list_node = options[:activities_list_node] || self.activities_list_node(self_node[:activities_list_node_id])
@@ -512,7 +634,7 @@ module Sociographer
         first_activity_timestamp = first_activity[:timestamp]
         last_activity_timestamp = last_activity[:timestamp]
 
-        if activities_sum > 100 && ( (last_activity_timestamp-first_activity_timestamp) >= 1.month.to_i)
+        if activities_sum > 100 #&& ( (last_activity_timestamp-first_activity_timestamp) >= 1.month.to_i)
           activities_sublists = activities_list.each_slice(4).to_a
           activities_sublists.each_with_index do |list, index|
             list_sum = list.size.to_f
@@ -523,7 +645,7 @@ module Sociographer
             list_grouped_activities = Hash[ list.group_by{|li| li[:activity_type]}.map{|act| [act[0], ((act[1].count/list_sum)*100)]} ]
             activities_sets << {list_index: index, starting_timestamp: first_activity_timestamp, ending_timestamp: last_activity_timestamp, list: list_grouped_activities }
           end
-          activities_node[:past_activities_count] = (activities_sum > 0 ? activities_sum.to_i : 1)
+          activities_node[:past_activities_count] = activities_sum
           activities_node[:current_activities_count] = 0
         else
           activities_sets = []
@@ -536,8 +658,8 @@ module Sociographer
 
       # Call it to make the relation between the entity and the actionable
       def make_activity(options={})
-        p "METHOD: make_activity(#{options.to_s})"
-        if options[:actionable] && ( options[:actionable].is_a?(Sociographer::Actionable) || options[:actionable].is_a?(Sociographer::Entity) ) && options[:activity_type]
+        # p "METHOD: make_activity(#{options.to_s})"
+        if options[:actionable] && ( options[:actionable].is_a?(Sociographer::Actionable) || options[:actionable].is_a?(Sociographer::Entity) ) && options[:actionable].present? && options[:activity_type]
 
           ## Getting all user needed nodes and variables/lists
           self_node = self.entity_node
@@ -546,6 +668,7 @@ module Sociographer
 
           self_activities_counts = YAML.load(self_activities_node[:activities_counts]) 
           self_activities_list = YAML.load(self_activities_list_node[:activities])
+          self_activities_list_count = self_activities_list.count
           ## Calculations activity representation variables
           actionable_node = options[:actionable].entity_node
           magnitude = prepare_magnitude_value(options[:magnitude])
@@ -571,131 +694,15 @@ module Sociographer
 
           ## Updating the current activities count
           self_activities_node[:current_activities_count] += 1
-          # if (self_activities_node[:past_activities_count] >= 70) && ( (self_activities_node[:current_activities_count]/self_activities_node[:past_activities_count].to_f) >= 0.05 )
+          if (self_activities_list_count >= 100) &&( (self_activities_node[:current_activities_count]/self_activities_node[:past_activities_count].to_f) >= 0.05 )
             self.update_activities(self_node: self_node, activities_node: self_activities_node, activities_list_node: self_activities_list_node, activities: self_activities_list)
-          # end
-        end
-      end
-
-      def weight_checker(activity_timestamp, activity_type, activities_sets)
-        p "METHOD: weight_checker(#{activity_timestamp.to_s}, #{activity_type.to_s}, #{activities_sets.to_s})"
-        if activities_sets.count < 4
-          return activities_sets[0][:list][activity_type] || 0
-        else 
-          case
-          when (activities_sets[0][:starting_timestamp] <= activity_timestamp) && (activity_timestamp < activities_sets[0][:ending_timestamp])
-            weight = activities_sets[0][:list][activity_type] || 0
-            return weight*0.25
-          when (activities_sets[1][:starting_timestamp] <= activity_timestamp) && (activity_timestamp < activities_sets[1][:ending_timestamp])
-            weight = activities_sets[1][:list][activity_type] || 0
-            return weight*0.5
-          when (activities_sets[2][:starting_timestamp] <= activity_timestamp) < (activity_timestamp < activities_sets[2][:ending_timestamp])
-            weight = activities_sets[2][:list][activity_type] || 0
-            return weight*0.75
-          else
-            return activities_sets[3][:list][activity_type] || 0
           end
         end
       end
+
 
       ### SOCIAL TRUST STARTED ###
       
-      # To calculate a number representing the relation between you and the entity:
-        # according to the weight of the relations, their magnitude, and their frequencies
-        # according to each user
-      def calculate_relation(entity, options={})
-        p "METHOD: calculate_relation(#{entity.to_s}, #{options.to_s})"
-        if entity.is_a?(Sociographer::Entity) && (self!=entity)
-          ## USER DATA
-          self_node = options[:self_node] || self.entity_node
-          self_node_id = self_node.neo_id.to_i
-          
-          self_activities_node = options[:activities_node] || self.activities_node(self_node[:activities_node_id])
-          self_activities_weights = options[:self_weights] || self.activities_counts(weights: true, activities_node: self_activities_node)
-          self_activities_sets = options[:activities_sets] || YAML.load(self_activities_node[:activities_sets])
-          self_entities_weights = options[:entities_weights] || YAML.load(self_activities_node[:entities_weights])
-          ##
-
-          ## ENTITY DATA
-          entity_node = entity.entity_node
-          entity_node_id = entity_node.neo_id.to_i
-          
-          entity_activities_node = entity.activities_node(entity_node[:activities_node_id])
-          entity_activities_weights = entity.activities_counts(weights: true, activities_node: entity_activities_node)
-          entity_activities_sets = YAML.load(entity_activities_node[:activities_sets])
-          entity_entities_weights = YAML.load(entity_activities_node[:entities_weights])
-          ## 
-
-          weight_in_between = nil
-
-          follow_relation = self_entities_weights[entity_node_id]
-          if follow_relation
-            relation_weight = follow_relation[:weight]
-            start_last_updated_count = follow_relation[:start_last_updated_count]
-            entity_last_updated_count = follow_relation[:end_last_updated_count]
-            if (relation_weight!=0) && ((start_last_updated_count/self_activities_node[:past_activities_count].to_f) <= 0.05) || ( (entity_last_updated_count/entity_activities_node[:past_activities_count].to_f) <= 0.05)
-              weight_in_between = relation_weight
-            end
-          end
-
-          unless weight_in_between
-
-            self_activities_list_node = options[:activities_list_node] || self.activities_list_node(self_node[:activities_list_node_id])
-            self_activities_list = options[:activities_list] || YAML.load(self_activities_list_node[:activities])
-  
-            entity_activities_list_node = entity.activities_list_node(entity[:activities_list_node_id])
-            entity_activities_list = YAML.load(entity_activities_list_node[:activities])
-
-
-            self_grouped_activities = self_activities_list.group_by{|a| a[:activity_node_id]}
-            entity_grouped_activities = entity_activities_list.group_by{|a| a[:activity_node_id]}
-
-            self_grouped_activities_nodes = self_grouped_activities.map{|a| a[0]}.compact.uniq
-            entity_grouped_activities_nodes = entity_grouped_activities.map{|a| a[0]}.compact.uniq
-            common_nodes = self_grouped_activities_nodes & entity_grouped_activities_nodes
-
-            self_common_activities = self_grouped_activities.select{|k,v| common_nodes.include?(k)}
-            entity_common_activities = entity_grouped_activities.select{|k,v| common_nodes.include?(k)}
-
-            weight_in_between = 0
-            self_common_activities.each do |actionable_node|
-              self_node_acts = actionable_node[1]
-              entity_node_acts = entity_common_activities[actionable_node[0]]
-              
-              self_actionable_node_acts_sum = 0
-              self_node_acts.each do |act|
-                activity_type = act[:activity_type]
-                timestamp = act[:timestamp]
-                magnitude = act[:magnitude]
-                weight = (1-weight_checker(timestamp, activity_type, self_activities_sets))*magnitude
-                self_actionable_node_acts_sum += weight
-              end
-
-              entity_actionable_node_acts_sum = 0
-              entity_node_acts.each do |act|
-                activity_type = act[:activity_type]
-                timestamp = act[:timestamp]
-                magnitude = act[:magnitude]
-                weight = (1-weight_checker(timestamp, activity_type, entity_activities_sets))*magnitude
-                entity_actionable_node_acts_sum += weight
-              end
-
-              weight_in_between += self_actionable_node_acts_sum*entity_actionable_node_acts_sum
-            end
-            self_entities_weights[entity_node_id] = {start_last_updated_count: self_activities_node[:past_activities_count], end_last_updated_count: entity_activities_node[:past_activities_count], weight: weight_in_between}
-            entity_entities_weights[self_node_id] = {start_last_updated_count: entity_activities_node[:past_activities_count], end_last_updated_count: self_activities_node[:past_activities_count], weight: weight_in_between}
-            
-            self_activities_node[:entities_weights] = YAML.dump(self_entities_weights)
-            entity_activities_node[:entities_weights] = YAML.dump(entity_entities_weights)
-          end
-          if weight_in_between > self_entity[:top_follower_weight]
-            self_entity[:top_follower_weight] = weight_in_between
-          end
-          return weight_in_between
-
-        end
-      end
-
       def profile_feed(page=1, per_page=30)
         if per_page < 1
           per_page = 20
@@ -704,21 +711,37 @@ module Sociographer
         if skipped_no < 0
           skipped_no = 0
         end
-
-        self_node_id = self.get_node_id
-        qur = "start n=node("+self_node_id.to_s+") match n-[r]->(z) return type(r), z, r.created_at ORDER BY r.created_at DESC SKIP #{skipped_no.to_s} LIMIT #{per_page}"
-        response = $neo.execute_query(qur)
         feeds = []
         self_id = self.id
         self_type = self.class.name
-        response["data"].each do |result|
-          activity_type = result[0]
-          attachment_data = result[1]["data"]
-          activity_timestamp = Time.at(result[2]).to_datetime
-          if activity_type && attachment_data && activity_timestamp
-            feeds << FeedItem.new(activity_type, attachment_data["object_id"], attachment_data["object_type"], self_id, self_type, activity_timestamp, self)
+
+        self_node = self.entity_node
+        self_activities_node_list = self.activities_list_node(self_node[:activities_list_node_id])
+        self_activities = YAML.load(self_activities_node_list[:activities]).paginate(page: page, per_page: per_page)
+        
+        unless self_activities.empty?
+          self_activities.each do |activity|
+            activity_type = activity[:activity_type]
+            attachment_data = get_node(activity[:activity_node_id])
+            activity_timestamp = Time.at(activity[:timestamp]).to_datetime
+            if activity_type && attachment_data && activity_timestamp
+              feeds << FeedItem.new(activity_type, attachment_data["object_id"], attachment_data["object_type"], self_id, self_type, activity_timestamp, self)
+            end
+          end
+        else
+          self_node_id = self.entity_node_id
+          qur = "start n=node("+self_node_id.to_s+") match n-[r]->(z) return type(r), z, r.created_at ORDER BY r.created_at DESC SKIP #{skipped_no.to_s} LIMIT #{per_page}"
+          response = $neo.execute_query(qur)
+          response["data"].each do |result|
+            activity_type = result[0]
+            attachment_data = result[1]["data"]
+            activity_timestamp = Time.at(result[2]).to_datetime
+            if activity_type && attachment_data && activity_timestamp
+              feeds << FeedItem.new(activity_type, attachment_data["object_id"], attachment_data["object_type"], self_id, self_type, activity_timestamp, self)
+            end
           end
         end
+
         f_by_attachment = feeds.group_by{|x| x.attachment_type}
         f_by_attachment.each do |fbt|
           attachments_ids = fbt[1].map{|u| u.attachment_id}.compact.uniq
@@ -746,21 +769,30 @@ module Sociographer
           skipped_no = 0
         end
 
-        self_node_id = self.get_node_id
-        qur = "start x=node("+self_node_id.to_s+") match x-[r:friends]->(y)-[r2]->(z) return type(r2), y, z, r2.created_at ORDER BY r2.created_at DESC SKIP #{skipped_no.to_s} LIMIT #{per_page}"
-        response = $neo.execute_query(qur)        
         feeds = []
-        response["data"].each do |result|
-          activity_type = result[0]
-          actor_data = result[1]["data"]
-          # actor = actor_data["object_type"].safe_constantize.find_by(id: actor_data["object_id"])
-          attachment_data = result[2]["data"]
-          # attachment = attachment_data["object_type"].safe_constantize.find_by(id: attachment_data["object_id"])
-          activity_timestamp = Time.at(result[3]).to_datetime
-          if activity_type && actor_data && attachment_data && activity_timestamp
-            feeds << FeedItem.new(activity_type, attachment_data["object_id"], attachment_data["object_type"], actor_data["object_id"], actor_data["object_type"], activity_timestamp)
+
+        self_followed = self.followed(only_nodes: true)
+        activities_list_nodes = self_followed.map{|n| n[:activities_list_node_id]}
+        # activities = $neo.get_nodes(activities_list_nodes).map{|n| n["data"]["activities"]}.map{|a| YAML.load(a)}.flatten.compact.uniq
+
+        activities_objects = $neo.get_nodes(activities_list_nodes).map{|n| {entity_id: n["data"]["refrence_id"], entity_type: n["data"]["refrence_type"], activities: YAML.load(n["data"]["activities"]) } }
+
+        activities_objects.each do |activity_object|
+          entity_id = activity_object[:entity_id].to_i
+          entity_type = activity_object[:entity_type]
+          activities = activity_object[:activities]
+          activities.each do |activity|
+            activity_type = activity[:activity_type]
+            attachment_data = get_node(activity[:activity_node_id])
+            activity_timestamp = Time.at(activity[:timestamp]).to_datetime
+            if activity_type && attachment_data && activity_timestamp
+              feeds << FeedItem.new(activity_type, attachment_data["object_id"], attachment_data["object_type"], entity_id, entity_type, activity_timestamp)
+            end
           end
         end
+
+        feeds = feeds.sort_by{ |f| f.timestamp }.paginate(page: page, per_page: per_page)
+        
         f_by_attachment = feeds.group_by{|x| x.attachment_type}
         f_by_attachment.each do |fbt|
           attachments_ids = fbt[1].map{|u| u.attachment_id}.compact.uniq
@@ -789,8 +821,8 @@ module Sociographer
           end
         end
         feeds = f_by_actor.map{|u| u[1]}.flatten.compact
-        feeds.sort_by{ |f| f.timestamp }
-        feeds
+        feeds = feeds.sort_by{ |f| f.timestamp }
+        return feeds
       end
 
       def get_entity_lists(entity, options={})
@@ -801,7 +833,7 @@ module Sociographer
           entity_node_id = entity.entity_node_id
           
           all_lists = get_all_lists_nodes(self_node: self_node, privacy_node: privacy_node)
-          selected_lists = all_lists.select{ |list| list[1].include?(entity_node_id) }.map{|list| list[0]}
+          selected_lists = all_lists.select{ |k, list| list.include?(entity_node_id) }.map{|k, list| k}
           return selected_lists
         end
       end
@@ -822,6 +854,7 @@ module Sociographer
 
           privacy_node[:banned_list] = YAML.dump(banned_list)
           privacy_node[:favorite_list] = YAML.dump(favorite_list)
+          return entity
         end
       end
 
@@ -835,6 +868,7 @@ module Sociographer
           banned_list = YAML.load(privacy_node[:banned_list])
           banned_list.delete(entity_node_id)
           privacy_node[:banned_list] = YAML.dump(banned_list)
+          return entity
         end
       end
 
@@ -866,6 +900,7 @@ module Sociographer
 
           privacy_node[:banned_list] = YAML.dump(banned_list)
           privacy_node[:favorite_list] = YAML.dump(favorite_list)
+          return entity
         end
       end
 
@@ -879,6 +914,7 @@ module Sociographer
           favorite_list = YAML.load(privacy_node[:favorite_list])
           favorite_list.delete(entity_node_id)
           privacy_node[:favorite_list] = YAML.dump(favorite_list)
+          return entity
         end
       end
 
@@ -986,10 +1022,12 @@ module Sociographer
       end
 
       def get_all_lists_nodes(options={})
+        self_node = options[:self_node] || self.entity_node
+        privacy_node = options[:privacy_node] || self.privacy_node(self_node[:privacy_node_id])
+
         all_lists_names = get_all_lists_names(self_node: self_node, privacy_node: privacy_node)
-        all_lists = all_lists_names.map{|ln| HASH[ [ln, get_list(ln, only_nodes: true, self_node: self_node, privacy_node: privacy_node)] ]}
-        all_lists << [{"banned_list" => self.get_banned(only_nodes: true, self_node: self_node, privacy_node: privacy_node)}, {"favorite_list" => self.get_favorite(only_nodes: true, self_node: self_node, privacy_node: privacy_node)}]
-        all_lists.flatten!
+        all_lists = all_lists_names.map{|ln| [ln, get_list(ln, only_nodes: true, self_node: self_node, privacy_node: privacy_node) ] }.to_h
+        # all_lists << [{"banned_list" => self.get_banned(only_nodes: true, self_node: self_node, privacy_node: privacy_node)}, {"favorite_list" => self.get_favorite(only_nodes: true, self_node: self_node, privacy_node: privacy_node)}]
       end
 
       def classify(entity, options={})
@@ -1002,18 +1040,25 @@ module Sociographer
 
           entity_node_id = entity.entity_node_id
 
-          entity_acts_counts = Hash[ entity.activities_counts(all_activities_types: all_activities).sort ]
+          entity_acts_counts = Hash[ entity.activities_counts(all_activities_types: all_activities, weights: true).sort ]
           entity_acts_counts_list = entity_acts_counts.map{|eac| eac[1]}
+          p "Entity Coor:"
+          p entity_acts_counts_list
 
           all_lists = get_all_lists_nodes(self_node: self_node, privacy_node: privacy_node)
           all_nodes_ids = all_lists.map{|list| list[1]}.flatten.uniq
           all_entities = fetch_entities(all_nodes_ids, only_ids: true)
 
-          all_entities_acts_counts = all_entities.map{|e| {entity: e, acts_counts: Hash[ e.activities_counts(all_activities_types: all_activities).sort ] } }
-
-          knn_data = all_entities_acts_counts.map{|e| {id: "#{e[:entity].class.name}#{e[:entity].id}", point: e[:acts_counts].map{|ac| ac[1]} } }
-          index = KnnBall.build(data)
+          all_entities_acts_counts = all_entities.map{|e| {entity: e, acts_counts: Hash[ e.activities_counts(all_activities_types: all_activities, weights: true).sort ] } }
+          p "Entities Acts Counts:"
+          p all_entities_acts_counts
+          knn_data = all_entities_acts_counts.map{|e| {id: "#{e[:entity].class.name}##{e[:entity].id}", point: e[:acts_counts].map{|ac| ac[1]} } }
+          p "Data:"
+          p knn_data
+          index = KnnBall.build(knn_data)
           result = index.nearest(entity_acts_counts_list)
+          p "Result:"
+          p result
           result_node_string = result[:id].split("#")
           result_entity = result_node_string[0].safe_constantize.find_by(id: result_node_string[1])
           result_lists = get_entity_lists(result_entity)

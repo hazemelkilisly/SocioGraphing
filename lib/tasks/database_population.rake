@@ -1,7 +1,7 @@
 task :populate_database => :environment do
 
   # number of users
-  no_of_users = 20
+  no_of_users = 30
   # number of posts for each user
   no_of_posts = 10
   # number of images upload count for each user
@@ -88,10 +88,11 @@ task :populate_database => :environment do
   all_users.each do |user|
     no_of_posts.times do
       post_caption = Faker::Lorem.paragraph
-      created_post = Post.create(user: user, content: post_caption)
-      user.make_activity(actionable: created_post, activity_type: :posted)
-      # user.posts.create(content: post_caption)
-      p "Posted =>> User: #{user.name} => #{post_caption}"
+      created_post = Post.new(user: user, content: post_caption)
+      if created_post.save
+        user.make_activity(actionable: created_post, activity_type: :posted)
+        p "Posted =>> User: #{user.name} => #{post_caption}"
+      end
     end
   end
   p "CCCCC FINISHED CREATING POSTS CCCCC"
@@ -102,9 +103,11 @@ task :populate_database => :environment do
     no_of_images.times do
       image_url = Faker::Company.logo
       # user.images.create(remote_image_url: image_url)
-      created_image = Image.create(remote_image_url: image_url, user: user)
-      user.make_activity(actionable: created_image, activity_type: :uploaded_image)
-      p "Uploaded Image =>> User: #{user.name} => #{image_url}"
+      created_image = Image.new(remote_image_url: image_url, user: user)
+      if created_image.save
+        user.make_activity(actionable: created_image, activity_type: :uploaded_image)
+        p "Uploaded Image =>> User: #{user.name} => #{image_url}"
+      end
     end
   end
   p "CCCCC FINISHED UPLOADING IMAGES CCCCC"
@@ -133,8 +136,11 @@ task :populate_database => :environment do
       when "like"
         user.liked_posts << post
         user.save
-        user.make_activity(actionable: post, activity_type: :liked)
-        p "Liked Post =>> User: #{user.name}"
+        post.reload
+        if post.present?
+          user.make_activity(actionable: post, activity_type: :liked)
+          p "Liked Post =>> User: #{user.name}"
+        end
       else "dislike"
         user.disliked_posts << post
         user.save
