@@ -345,6 +345,8 @@ module Sociographer
             entity_node[:top_follower_weight] = weight_in_between
           end
           return weight_in_between
+        else
+          0
         end
       end
 
@@ -534,7 +536,18 @@ module Sociographer
         # p "METHOD: friend_suggestions(#{limit.to_s})"
         self_node = self.entity_node
         self_node_id = self_node.neo_id.to_i
-        recommendations = self_node.incoming(:follow).order("breadth first").uniqueness("node global").depth(2).map{|n| n }.flatten.compact.uniq
+        query = "
+        START n=node(#{self_node_id.to_s})
+        MATCH (n)-[:follow]-(friend)-[:follow]->(friend_of_friend)
+        WHERE NOT((n)-[:follow]->(friend_of_friend)) AND (n) <> (friend_of_friend)
+        RETURN friend_of_friend, COUNT(*)
+        ORDER BY COUNT(*) DESC
+        "
+        response = $neo.execute_query(query)
+        recommendations = response["data"].map{|x| x.first["data"]}
+        # node_id = response["data"].flatten.first["metadata"]["id"].try(:to_i)
+
+        # recommendations = self_node.incoming(:follow).order("breadth first").uniqueness("node global").depth(2).map{|n| n }.flatten.compact.uniq
         results = fetch_entities(recommendations, self_node: self_node, sort: true)
         limit = limit.try(:to_i)
         results = results.first(limit) if limit
