@@ -43,7 +43,7 @@ module Sociographer
         activities_node = Neography::Node.create("object_type" => "activities", "refrence_id" => self.id, "refrence_type" => self.class.to_s)
         activities_node[:past_activities_count] = 1
         activities_node[:current_activities_count] = 0
-        activities_node[:activities_sets] = YAML.dump []
+        activities_node[:activities_sets] = YAML.dump [{list_index: 0, starting_timestamp: 0, ending_timestamp: 0, list: {} }]
         activities_node[:activities_counts] = YAML.dump({})
         activities_node[:entities_weights] = YAML.dump({})
         return activities_node
@@ -648,7 +648,8 @@ module Sociographer
         last_activity_timestamp = last_activity[:timestamp]
 
         if activities_sum > 100 #&& ( (last_activity_timestamp-first_activity_timestamp) >= 1.month.to_i)
-          activities_sublists = activities_list.each_slice(4).to_a
+          as_size = (activities_list.size/4.0).round
+          activities_sublists = activities_list.each_slice(as_size).to_a
           activities_sublists.each_with_index do |list, index|
             list_sum = list.size.to_f
             first_activity = list.first
@@ -681,7 +682,6 @@ module Sociographer
 
           self_activities_counts = YAML.load(self_activities_node[:activities_counts]) 
           self_activities_list = YAML.load(self_activities_list_node[:activities])
-          self_activities_list_count = self_activities_list.count
           ## Calculations activity representation variables
           actionable_node = options[:actionable].entity_node
           magnitude = prepare_magnitude_value(options[:magnitude])
@@ -705,9 +705,10 @@ module Sociographer
           relation_relationship = Neography::Relationship.create(activity_type, self_node, actionable_node)
           $neo.set_relationship_properties(relation_relationship, {"magnitude" => magnitude, "timestamp" => timestamp})
 
+          self_activities_list_count = self_activities_list.count
           ## Updating the current activities count
           self_activities_node[:current_activities_count] += 1
-          if (self_activities_list_count >= 100) &&( (self_activities_node[:current_activities_count]/self_activities_node[:past_activities_count].to_f) >= 0.05 )
+          if (self_activities_list_count >= 100) && ( (self_activities_node[:current_activities_count]/self_activities_node[:past_activities_count].to_f) >= 0.05 )
             self.update_activities(self_node: self_node, activities_node: self_activities_node, activities_list_node: self_activities_list_node, activities: self_activities_list)
           end
         end
